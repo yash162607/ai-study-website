@@ -25,7 +25,7 @@ dotenv.config({ path: ".env.local" });
 dotenv.config();
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = 3000;
 const GEMINI_MODEL = "gemini-3.6-flash";
 const GEMINI_FALLBACK_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.7-flash"];
 const publicDir = path.join(process.cwd(), "public");
