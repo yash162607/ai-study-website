@@ -1,0 +1,6 @@
+{
+  "name": "StudyHub - College Academic Dashboard",
+  "description": "A modern, clean, student-friendly academic dashboard for FY, SY, and TY college students featuring notes, PYQs, AI study assistant, interactive quizzes, study planner, and store.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
