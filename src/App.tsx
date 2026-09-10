@@ -526,6 +526,7 @@ function StudyDashboard({ authUser, onLogout, isNewUser, onStudySettingsSaved }:
         onClose={() => setIsProfileOpen(false)}
         profile={profile}
         isNewUser={isNewUser}
+        onLogout={onLogout}
         onSaveProfile={(updated) => {
           setProfile((prev) => {
             const next = { ...prev, ...updated };
@@ -587,18 +588,60 @@ export function App() {
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((response) => response.json())
-      .then((data) => {
-        setAuthUser(data.user);
-        if (data.user) setIsNewUser(localStorage.getItem(`studyhub_new_user_${data.user.id}`) === "true");
-      })
-      .catch(() => setAuthUser(null))
-      .finally(() => setAuthChecked(true));
+    const restoreSession = async () => {
+      try {
+        const response = await fetch("/api/auth/me");
+        const data = await response.json();
+        if (data.user) {
+          setAuthUser(data.user);
+          setIsNewUser(localStorage.getItem(`studyhub_new_user_${data.user.id}`) === "true");
+          return;
+        }
+      } catch {
+        setAuthUser(null);
+      }
+
+      try {
+        const savedCredentials = localStorage.getItem("studyhub_saved_credentials");
+        if (!savedCredentials) {
+          setAuthUser(null);
+          return;
+        }
+
+        const parsed = JSON.parse(savedCredentials);
+        if (!parsed?.email || !parsed?.password) {
+          localStorage.removeItem("studyhub_saved_credentials");
+          setAuthUser(null);
+          return;
+        }
+
+        const loginResponse = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: parsed.email, password: parsed.password, rememberMe: true }),
+        });
+
+        const loginData = await loginResponse.json();
+        if (!loginResponse.ok) {
+          localStorage.removeItem("studyhub_saved_credentials");
+          setAuthUser(null);
+          return;
+        }
+
+        setAuthUser(loginData.user);
+        setIsNewUser(localStorage.getItem(`studyhub_new_user_${loginData.user.id}`) === "true");
+      } catch {
+        localStorage.removeItem("studyhub_saved_credentials");
+        setAuthUser(null);
+      }
+    };
+
+    restoreSession().finally(() => setAuthChecked(true));
   }, []);
 
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+    localStorage.removeItem("studyhub_saved_credentials");
     setAuthUser(null);
   };
 

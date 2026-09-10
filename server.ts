@@ -109,17 +109,13 @@ app.get("/api/auth/me", (req, res) => {
 });
 
 app.post("/api/auth/register", (req, res) => {
-  const { fullName, email, mobile, college, course, year, password, confirmPassword, acceptedTerms } = req.body || {};
+  const { fullName, email, mobile, college, course, year, password, confirmPassword } = req.body || {};
   const validationError = validateAccountInput(req.body, true);
   if (validationError) return res.status(400).json({ error: validationError });
   if (password !== confirmPassword) return res.status(400).json({ error: "Passwords do not match." });
-  if (!acceptedTerms) return res.status(400).json({ error: "Accept the Terms & Conditions and Privacy Policy to continue." });
 
   try {
     const user = createUser({ fullName, email, mobile, college, course, year, password, role: "user" });
-    const token = createSessionToken();
-    createSession(hashSessionToken(token), user.id, new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString());
-    setSessionCookie(res, token, 8 * 60 * 60);
     return res.status(201).json({ user });
   } catch (error: any) {
     if (String(error?.code) === "SQLITE_CONSTRAINT_UNIQUE") return res.status(409).json({ error: "An account with this email already exists." });

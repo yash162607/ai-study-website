@@ -18,6 +18,7 @@ interface ProfileModalProps {
   onClose: () => void;
   profile: StudentProfile;
   onSaveProfile: (updated: Partial<StudentProfile>) => void;
+  onLogout?: () => void;
   isNewUser?: boolean;
 }
 
@@ -26,6 +27,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   onClose,
   profile,
   onSaveProfile,
+  onLogout,
   isNewUser = false,
 }) => {
   const [name, setName] = useState(profile.name);
@@ -269,21 +271,38 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             />
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-xl px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-5 py-2 font-bold text-white hover:bg-blue-700 transition"
-            >
-              {saved ? <Check className="h-4 w-4" /> : null}
-              <span>{saved ? "Saved!" : "Save Profile"}</span>
-            </button>
+          <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100">
+            {onLogout ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onLogout();
+                }}
+                className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100"
+              >
+                Logout
+              </button>
+            ) : (
+              <div />
+            )}
+
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-xl px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-5 py-2 font-bold text-white hover:bg-blue-700 transition"
+              >
+                {saved ? <Check className="h-4 w-4" /> : null}
+                <span>{saved ? "Saved!" : "Save Profile"}</span>
+              </button>
+            </div>
           </div>
         </form>
       </div>

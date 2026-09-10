@@ -367,6 +367,16 @@ export const Navbar: React.FC<NavbarProps> = ({
               );
             })}
           </div>
+
+          <button
+            onClick={() => {
+              setMobileMenuOpen(false);
+              onLogout();
+            }}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-bold text-red-600 hover:bg-red-100"
+          >
+            Logout
+          </button>
         </div>
       )}
     </header>
