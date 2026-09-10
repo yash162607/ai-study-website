@@ -203,6 +203,12 @@ export const TodaysStudyPlan: React.FC<TodaysStudyPlanProps> = ({
           </button>
         </div>
 
+        {filteredTasks.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3 text-center text-xs text-slate-500">
+            No study tasks yet. Add your first task to build today&apos;s plan.
+          </div>
+        ) : null}
+
         {/* Inline Add Task Form */}
         {isAdding && (
           <form

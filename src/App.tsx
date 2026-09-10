@@ -49,10 +49,25 @@ import {
 function StudyDashboard({ authUser, onLogout, isNewUser, onStudySettingsSaved }: { authUser: AuthUser; onLogout: () => void; isNewUser: boolean; onStudySettingsSaved: () => void }) {
   // Primary Application State
   const [profile, setProfile] = useState<StudentProfile>(initialStudentProfile);
-  const [subjects, setSubjects] = useState<SubjectProgress[]>(isNewUser ? [] : defaultSubjects[authUser.year]);
-  const [tasks, setTasks] = useState<StudyTask[]>(isNewUser ? [] : initialTasks);
-  const [reminders, setReminders] = useState<UpcomingItem[]>(isNewUser ? [] : initialUpcomingReminders);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(isNewUser ? [] : initialNotifications);
+  const [subjects, setSubjects] = useState<SubjectProgress[]>([]);
+  const [tasks, setTasks] = useState<StudyTask[]>([]);
+  const [reminders, setReminders] = useState<UpcomingItem[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+
+  useEffect(() => {
+    if (isNewUser) {
+      setSubjects([]);
+      setTasks([]);
+      setReminders([]);
+      setNotifications([]);
+      return;
+    }
+
+    setSubjects(defaultSubjects[authUser.year] || []);
+    setTasks(initialTasks);
+    setReminders(initialUpcomingReminders);
+    setNotifications(initialNotifications);
+  }, [authUser.year, isNewUser]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardUser[]>(leaderboardData);
   const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>([]);
   const [notes, setNotes] = useState(sampleNotesList);
@@ -150,7 +165,11 @@ function StudyDashboard({ authUser, onLogout, isNewUser, onStudySettingsSaved }:
 
   const handleYearChange = (year: AuthUser["year"]) => {
     setProfile((current) => ({ ...current, year }));
-    setSubjects(defaultSubjects[year] || []);
+    if (!isNewUser) {
+      setSubjects(defaultSubjects[year] || []);
+    } else {
+      setSubjects([]);
+    }
     fetch("/api/auth/profile", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -530,8 +549,11 @@ function StudyDashboard({ authUser, onLogout, isNewUser, onStudySettingsSaved }:
         onSaveProfile={(updated) => {
           setProfile((prev) => {
             const next = { ...prev, ...updated };
-            if (updated.year && defaultSubjects[updated.year]) {
+            if (updated.year && !isNewUser && defaultSubjects[updated.year]) {
               setSubjects(defaultSubjects[updated.year]);
+            }
+            if (isNewUser && updated.year) {
+              setSubjects([]);
             }
             return next;
           });

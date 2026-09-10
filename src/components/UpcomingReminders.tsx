@@ -207,38 +207,44 @@ export const UpcomingReminders: React.FC<UpcomingRemindersProps> = ({
       )}
 
       {/* Reminder items */}
-      <div className="space-y-2.5">
-        {filtered.map((item) => (
-          <div
-            key={item.id}
-            className="flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-white hover:border-slate-200 transition"
-          >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div
-                className={`w-1.5 h-8 rounded-full shrink-0 ${getIndicatorColor(
-                  item.type
-                )}`}
-              />
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-slate-900 truncate">
-                  {item.title}
-                </p>
-                <p className="text-[10px] text-slate-400 truncate">
-                  {item.subject} • {item.date}
-                </p>
-              </div>
-            </div>
-
-            <span
-              className={`text-[10px] font-bold px-2 py-0.5 rounded-lg shrink-0 ${getDaysBadge(
-                item.daysLeft
-              )}`}
+      {filtered.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3 text-center text-xs text-slate-500">
+          No deadlines added yet. Add your exams and assignments here.
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {filtered.map((item) => (
+            <div
+              key={item.id}
+              className="flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-white hover:border-slate-200 transition"
             >
-              {item.daysLeft} {item.daysLeft === 1 ? "day" : "days"} left
-            </span>
-          </div>
-        ))}
-      </div>
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div
+                  className={`w-1.5 h-8 rounded-full shrink-0 ${getIndicatorColor(
+                    item.type
+                  )}`}
+                />
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-slate-900 truncate">
+                    {item.title}
+                  </p>
+                  <p className="text-[10px] text-slate-400 truncate">
+                    {item.subject} • {item.date}
+                  </p>
+                </div>
+              </div>
+
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-lg shrink-0 ${getDaysBadge(
+                  item.daysLeft
+                )}`}
+              >
+                {item.daysLeft} {item.daysLeft === 1 ? "day" : "days"} left
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Quick Action Footer */}
       <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
