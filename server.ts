@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import express from "express";
+import fs from "fs";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
@@ -15,11 +16,13 @@ import {
   getUserBySession,
   getUserWithPasswordByEmail,
   listUsers,
+  recordUserActivity,
   updateUserProfile,
   upsertNote,
   upsertPYQ,
 } from "./server/database";
 import { createSessionToken, hashSessionToken, isValidEmail, normalizeEmail, verifyPassword } from "./server/auth";
+import { AcademicYear } from "./src/types";
 
 dotenv.config({ path: ".env.local" });
 dotenv.config();
@@ -137,6 +140,7 @@ app.post("/api/auth/login", (req, res) => {
     return res.status(401).json({ error: "Email or password is incorrect." });
   }
   loginAttempts.delete(normalizedEmail);
+  recordUserActivity(user.id, "login");
   const maxAge = rememberMe ? 30 * 24 * 60 * 60 : 8 * 60 * 60;
   const token = createSessionToken();
   createSession(hashSessionToken(token), user.id, new Date(Date.now() + maxAge * 1000).toISOString());
@@ -146,7 +150,9 @@ app.post("/api/auth/login", (req, res) => {
 
 app.post("/api/auth/logout", (req, res) => {
   const token = getSessionToken(req);
+  const user = token ? currentUser(req) : undefined;
   if (token) deleteSession(hashSessionToken(token));
+  if (user) recordUserActivity(user.id, "logout");
   clearSessionCookie(res);
   res.json({ ok: true });
 });
@@ -192,6 +198,19 @@ app.get("/api/pyqs", requireAuth, (_req, res) => {
   res.json(getPYQs());
 });
 
+function sanitizeFileName(fileName: string): string {
+  return fileName.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim();
+}
+
+function fileTypeFromName(fileName: string): "pdf" | "pptx" | "doc" | "docx" | "other" {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(".pdf")) return "pdf";
+  if (lower.endsWith(".pptx")) return "pptx";
+  if (lower.endsWith(".doc")) return "doc";
+  if (lower.endsWith(".docx")) return "docx";
+  return "other";
+}
+
 app.get("/api/admin/users", requireAdmin, (_req, res) => {
   res.json({ users: listUsers() });
 });
@@ -199,6 +218,73 @@ app.get("/api/admin/users", requireAdmin, (_req, res) => {
 app.delete("/api/admin/users/:id", requireAdmin, (req, res) => {
   deleteUser(req.params.id);
   res.json({ ok: true });
+});
+
+app.post("/api/admin/notes/upload", requireAdmin, (req, res) => {
+  try {
+    const { subject, year, title, summary, unit, pages, author, fileName, fileContent, fileType } = req.body || {};
+    if (!subject || !year || !fileName || !fileContent) return res.status(400).json({ error: "Subject, year, file name, and file content are required." });
+    const safeName = sanitizeFileName(String(fileName));
+    const targetDir = path.join(publicDir, "notes", year === "FY" ? "FY" : "", subject);
+    fs.mkdirSync(targetDir, { recursive: true });
+    const targetPath = path.join(targetDir, safeName);
+    const base64 = String(fileContent).replace(/^data:.*;base64,/, "");
+    fs.writeFileSync(targetPath, Buffer.from(base64, "base64"));
+    const fileUrl = year === "FY" ? `/notes/FY/${encodeURIComponent(subject)}/${encodeURIComponent(safeName)}` : `/notes/${encodeURIComponent(subject)}/${encodeURIComponent(safeName)}`;
+    const newNote = {
+      id: `uploaded-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      title: String(title || safeName.replace(/\.[^/.]+$/, "")),
+      subject: String(subject),
+      year: String(year) as AcademicYear,
+      semester: 3,
+      unit: String(unit || "Uploaded Notes"),
+      pages: Number(pages) || 1,
+      author: String(author || "StudyHub Admin"),
+      rating: 4.8,
+      downloads: 0,
+      tags: [String(subject), "Uploaded", `${String(year)} Notes`],
+      summary: String(summary || `Uploaded study material for ${subject}.`),
+      fileUrl,
+      fileName: safeName,
+      fileType: fileTypeFromName(safeName) || (fileType as any) || "other",
+    };
+    upsertNote(newNote);
+    return res.status(201).json({ ok: true, note: newNote });
+  } catch (error) {
+    console.error("Admin note upload error:", error);
+    return res.status(500).json({ error: "Unable to upload this note file." });
+  }
+});
+
+app.post("/api/admin/pyqs/upload", requireAdmin, (req, res) => {
+  try {
+    const { subject, collegeYear, yearOfExam, semester, examType, duration, totalMarks, solved, fileName, fileContent } = req.body || {};
+    if (!subject || !collegeYear || !fileName || !fileContent) return res.status(400).json({ error: "Subject, year, file name, and file content are required." });
+    const safeName = sanitizeFileName(String(fileName));
+    const targetDir = path.join(publicDir, "pyqs");
+    fs.mkdirSync(targetDir, { recursive: true });
+    const targetPath = path.join(targetDir, safeName);
+    const base64 = String(fileContent).replace(/^data:.*;base64,/, "");
+    fs.writeFileSync(targetPath, Buffer.from(base64, "base64"));
+    const fileUrl = `/pyqs/${encodeURIComponent(safeName)}`;
+    const paper = {
+      id: `uploaded-pyq-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      subject: String(subject),
+      yearOfExam: Number(yearOfExam) || new Date().getFullYear(),
+      collegeYear: String(collegeYear) as AcademicYear,
+      semester: Number(semester) || 1,
+      examType: String(examType || "End-Term") as "End-Term" | "Mid-Term" | "Internal Backlog",
+      duration: String(duration || "3 hours"),
+      totalMarks: Number(totalMarks) || 100,
+      solved: Boolean(solved),
+      downloadUrl: fileUrl,
+    };
+    upsertPYQ(paper);
+    return res.status(201).json({ ok: true, paper });
+  } catch (error) {
+    console.error("Admin PYQ upload error:", error);
+    return res.status(500).json({ error: "Unable to upload this PYQ file." });
+  }
 });
 
 app.post("/api/admin/notes", requireAdmin, (req, res) => {

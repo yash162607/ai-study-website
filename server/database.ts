@@ -158,6 +158,13 @@ database.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS user_activity (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    action TEXT NOT NULL CHECK (action IN ('login', 'logout')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS notes (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
@@ -276,8 +283,51 @@ export function updateUserProfile(id: string, input: { fullName: string; mobile?
   return getUserById(id);
 }
 
-export function listUsers(): AuthUser[] {
-  return (database.prepare("SELECT id, full_name, email, mobile, college, course, year, role, created_at FROM users ORDER BY created_at DESC").all() as any[]).map(mapUser);
+export function recordUserActivity(userId: string, action: "login" | "logout"): void {
+  database.exec(`CREATE TABLE IF NOT EXISTS user_activity (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    action TEXT NOT NULL CHECK (action IN ('login', 'logout')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );`);
+  database.prepare("INSERT INTO user_activity (id, user_id, action) VALUES (?, ?, ?)").run(crypto.randomUUID(), userId, action);
+}
+
+export function listUsers(): Array<AuthUser & { lastLoginAt?: string | null; lastLogoutAt?: string | null }> {
+  const rows = database.prepare(`
+    SELECT
+      u.id,
+      u.full_name,
+      u.email,
+      u.mobile,
+      u.college,
+      u.course,
+      u.year,
+      u.role,
+      u.created_at,
+      (
+        SELECT a.created_at
+        FROM user_activity a
+        WHERE a.user_id = u.id AND a.action = 'login'
+        ORDER BY a.created_at DESC
+        LIMIT 1
+      ) AS last_login_at,
+      (
+        SELECT a.created_at
+        FROM user_activity a
+        WHERE a.user_id = u.id AND a.action = 'logout'
+        ORDER BY a.created_at DESC
+        LIMIT 1
+      ) AS last_logout_at
+    FROM users u
+    ORDER BY u.created_at DESC
+  `).all() as any[];
+
+  return rows.map((row) => ({
+    ...mapUser(row),
+    lastLoginAt: row.last_login_at ?? null,
+    lastLogoutAt: row.last_logout_at ?? null,
+  }));
 }
 
 export function deleteUser(id: string): void {
@@ -338,13 +388,17 @@ if (pyqCount.count === 0) {
 export function getNotes(): StudyNote[] {
   syncUploadedNotes();
   const rows = database.prepare("SELECT * FROM notes ORDER BY id").all() as Array<StudyNote & { tags: string; file_name?: string | null; file_url?: string | null; file_type?: string | null }>;
-  return rows.map((row) => ({
-    ...row,
-    tags: JSON.parse(row.tags),
-    fileName: row.file_name ?? undefined,
-    fileUrl: row.file_url ?? undefined,
-    fileType: (row.file_type as StudyNote["fileType"]) ?? "other",
-  }));
+  return rows.map((row) => {
+    const tags = JSON.parse(row.tags);
+    const previewHtml = `<!doctype html><html><head><meta charset="utf-8"><title>${row.title}</title><style>body{font-family:Arial,sans-serif;max-width:800px;margin:40px auto;padding:0 24px;color:#172033}h1{color:#1d4ed8}p{line-height:1.7;color:#475569}.meta{font-size:14px;color:#64748b}</style></head><body><h1>${row.title}</h1><p class="meta">${row.subject} · ${row.year} · ${row.unit}</p><p>${row.summary}</p></body></html>`;
+    return {
+      ...row,
+      tags,
+      fileName: row.file_name ?? undefined,
+      fileUrl: row.file_url ?? `data:text/html;charset=utf-8,${encodeURIComponent(previewHtml)}`,
+      fileType: (row.file_type as StudyNote["fileType"]) ?? "other",
+    };
+  });
 }
 
 export function getPYQs(): PYQPaper[] {
