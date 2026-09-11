@@ -158,17 +158,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           </nav>
         </div>
 
-        {/* Right: Streak, Notification Bell & Profile Avatar */}
+        {/* Right: Notification Bell & Profile Avatar */}
         <div className="flex items-center gap-3 sm:gap-4">
-          {/* Daily Streak */}
-          <div
-            className="hidden sm:flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 border border-amber-200/60"
-            title={`${profile.streakDays} Day Study Streak`}
-          >
-            <Flame className="h-3.5 w-3.5 text-amber-500 fill-amber-400" />
-            <span>{profile.streakDays}d Streak</span>
-          </div>
-
           {/* Notification Bell */}
           <div className="relative">
             <button
