@@ -20,6 +20,24 @@ import {
   updateUserProfile,
   upsertNote,
   upsertPYQ,
+  createStudyTask,
+  listTodayTasks,
+  listTasks,
+  updateStudyTask,
+  deleteStudyTask,
+  createDeadline,
+  listUpcomingDeadlines,
+  updateDeadline,
+  deleteDeadline,
+  recordStudySession,
+  listStudySessions,
+  recordQuizPerformance,
+  listQuizPerformance,
+  getProgress,
+  listNotifications,
+  unreadNotificationCount,
+  markNotificationRead,
+  markAllNotificationsRead,
 } from "./server/database";
 import { createSessionToken, hashSessionToken, isValidEmail, normalizeEmail, verifyPassword } from "./server/auth";
 import { AcademicYear } from "./src/types";
@@ -75,7 +93,7 @@ function requireAuth(req: express.Request, res: express.Response, next: express.
     res.status(401).json({ error: "Please log in to continue." });
     return;
   }
-  (req as express.Request & { user: typeof user }).user = user;
+  (req as express.Request & { user: typeof user & { name: string } }).user = { ...user, name: user.fullName };
   next();
 }
 
@@ -163,6 +181,115 @@ app.put("/api/auth/profile", requireAuth, (req, res) => {
   const user = updateUserProfile((req as any).user.id, { fullName, mobile, college, course, year });
   res.json({ user });
 });
+
+function authenticatedUser(req: express.Request) {
+  return (req as express.Request & { user: { id: string; name: string; fullName: string; email: string } }).user;
+}
+
+function isIsoDate(value: unknown): value is string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00`).getTime());
+}
+
+function validateTask(body: any): string | undefined {
+  if (!body?.title?.trim() || !body?.subject?.trim()) return "Task title and subject are required.";
+  if (!isIsoDate(body.date)) return "Task date must use YYYY-MM-DD format.";
+  if (!["high", "medium", "low"].includes(body.priority)) return "Task priority is invalid.";
+}
+
+function validateDeadline(body: any): string | undefined {
+  if (!body?.title?.trim() || !body?.subject?.trim()) return "Deadline title and subject are required.";
+  if (!isIsoDate(body.dueDate)) return "Deadline date must use YYYY-MM-DD format.";
+  if (!["exam", "assignment", "project", "internal"].includes(body.type)) return "Deadline type is invalid.";
+}
+
+app.get("/api/dashboard", requireAuth, (req, res) => {
+  try {
+    const user = authenticatedUser(req);
+    const today = new Date().toISOString().slice(0, 10);
+    const notifications = listNotifications(user.id);
+    res.json({
+      user,
+      progress: getProgress(user.id),
+      todayTasks: listTodayTasks(user.id, today),
+      upcomingDeadlines: listUpcomingDeadlines(user.id),
+      notifications,
+      unreadNotificationCount: unreadNotificationCount(user.id),
+      quizHistory: listQuizPerformance(user.id),
+      studyHistory: listStudySessions(user.id),
+      allTasks: listTasks(user.id),
+    });
+  } catch (error) {
+    console.error("Dashboard error:", error);
+    res.status(500).json({ error: "Unable to load your dashboard." });
+  }
+});
+
+app.get("/api/progress", requireAuth, (req, res) => res.json({ progress: getProgress(authenticatedUser(req).id) }));
+
+app.get("/api/tasks", requireAuth, (req, res) => res.json({ tasks: listTasks(authenticatedUser(req).id) }));
+app.post("/api/tasks", requireAuth, (req, res) => {
+  const validationError = validateTask(req.body);
+  if (validationError) return res.status(400).json({ error: validationError });
+  try {
+    const task = createStudyTask(authenticatedUser(req).id, { title: req.body.title.trim(), subject: req.body.subject.trim(), date: req.body.date, time: req.body.time?.trim(), priority: req.body.priority });
+    return res.status(201).json({ task });
+  } catch (error) {
+    console.error("Create task error:", error);
+    return res.status(500).json({ error: "Unable to create this task." });
+  }
+});
+app.put("/api/tasks/:id", requireAuth, (req, res) => {
+  const validationError = req.body.date || req.body.title || req.body.subject || req.body.priority ? validateTask({ ...req.body, date: req.body.date || new Date().toISOString().slice(0, 10), title: req.body.title || "Existing task", subject: req.body.subject || "Existing subject", priority: req.body.priority || "medium" }) : undefined;
+  if (validationError) return res.status(400).json({ error: validationError });
+  const task = updateStudyTask(authenticatedUser(req).id, req.params.id, req.body);
+  if (!task) return res.status(404).json({ error: "Task not found." });
+  return res.json({ task });
+});
+app.delete("/api/tasks/:id", requireAuth, (req, res) => {
+  if (!deleteStudyTask(authenticatedUser(req).id, req.params.id)) return res.status(404).json({ error: "Task not found." });
+  return res.json({ ok: true });
+});
+
+app.get("/api/deadlines", requireAuth, (req, res) => res.json({ deadlines: listUpcomingDeadlines(authenticatedUser(req).id) }));
+app.post("/api/deadlines", requireAuth, (req, res) => {
+  const validationError = validateDeadline(req.body);
+  if (validationError) return res.status(400).json({ error: validationError });
+  try {
+    const deadline = createDeadline(authenticatedUser(req).id, { title: req.body.title.trim(), subject: req.body.subject.trim(), dueDate: req.body.dueDate, type: req.body.type });
+    return res.status(201).json({ deadline });
+  } catch (error) {
+    console.error("Create deadline error:", error);
+    return res.status(500).json({ error: "Unable to create this deadline." });
+  }
+});
+app.put("/api/deadlines/:id", requireAuth, (req, res) => {
+  if (req.body.dueDate && !isIsoDate(req.body.dueDate)) return res.status(400).json({ error: "Deadline date must use YYYY-MM-DD format." });
+  const deadline = updateDeadline(authenticatedUser(req).id, req.params.id, req.body);
+  if (!deadline) return res.status(404).json({ error: "Deadline not found." });
+  return res.json({ deadline });
+});
+app.delete("/api/deadlines/:id", requireAuth, (req, res) => {
+  if (!deleteDeadline(authenticatedUser(req).id, req.params.id)) return res.status(404).json({ error: "Deadline not found." });
+  return res.json({ ok: true });
+});
+
+app.get("/api/study-sessions", requireAuth, (req, res) => res.json({ sessions: listStudySessions(authenticatedUser(req).id) }));
+app.post("/api/study-sessions", requireAuth, (req, res) => {
+  const { subject, startedAt, endedAt, durationMinutes } = req.body || {};
+  if (!subject?.trim() || !startedAt || !endedAt || !Number.isInteger(durationMinutes) || durationMinutes < 0) return res.status(400).json({ error: "Subject, start/end times, and a valid duration are required." });
+  try { return res.status(201).json({ session: recordStudySession(authenticatedUser(req).id, { subject: subject.trim(), startedAt, endedAt, durationMinutes }) }); } catch (error) { console.error("Study session error:", error); return res.status(500).json({ error: "Unable to save this study session." }); }
+});
+
+app.get("/api/quiz-performance", requireAuth, (req, res) => res.json({ attempts: listQuizPerformance(authenticatedUser(req).id) }));
+app.post("/api/quiz-performance", requireAuth, (req, res) => {
+  const { quizId, subject, totalQuestions, correctAnswers, score, completedAt } = req.body || {};
+  if (!quizId || !subject?.trim() || !Number.isInteger(totalQuestions) || totalQuestions < 1 || !Number.isInteger(correctAnswers) || correctAnswers < 0 || correctAnswers > totalQuestions || typeof score !== "number") return res.status(400).json({ error: "Invalid quiz result." });
+  try { return res.status(201).json({ attempt: recordQuizPerformance(authenticatedUser(req).id, { quizId, subject: subject.trim(), totalQuestions, correctAnswers, score, completedAt }) }); } catch (error) { console.error("Quiz result error:", error); return res.status(500).json({ error: "Unable to save this quiz result." }); }
+});
+
+app.get("/api/notifications", requireAuth, (req, res) => { const userId = authenticatedUser(req).id; res.json({ notifications: listNotifications(userId), unreadNotificationCount: unreadNotificationCount(userId) }); });
+app.put("/api/notifications/:id/read", requireAuth, (req, res) => { if (!markNotificationRead(authenticatedUser(req).id, req.params.id)) return res.status(404).json({ error: "Notification not found." }); res.json({ ok: true }); });
+app.put("/api/notifications/read-all", requireAuth, (req, res) => { markAllNotificationsRead(authenticatedUser(req).id); res.json({ ok: true }); });
 
 // Lazy initialization of Gemini API Client
 let genAIClient: GoogleGenAI | null = null;

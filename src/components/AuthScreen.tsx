@@ -2,30 +2,6 @@ import React, { useEffect, useState } from "react";
 import { BookOpen, Eye, EyeOff, LockKeyhole, Mail, UserRound } from "lucide-react";
 import { AuthUser, AcademicYear } from "../types";
 
-const SAVED_CREDENTIALS_KEY = "studyhub_saved_credentials";
-
-const readSavedCredentials = () => {
-  try {
-    const storedValue = localStorage.getItem(SAVED_CREDENTIALS_KEY);
-    if (!storedValue) return null;
-    const parsed = JSON.parse(storedValue);
-    if (typeof parsed?.email === "string" && typeof parsed?.password === "string") {
-      return { email: parsed.email, password: parsed.password };
-    }
-  } catch {
-    localStorage.removeItem(SAVED_CREDENTIALS_KEY);
-  }
-  return null;
-};
-
-const saveCredentials = (email: string, password: string) => {
-  localStorage.setItem(SAVED_CREDENTIALS_KEY, JSON.stringify({ email, password }));
-};
-
-const clearSavedCredentials = () => {
-  localStorage.removeItem(SAVED_CREDENTIALS_KEY);
-};
-
 interface AuthScreenProps {
   initialMode?: "login" | "register";
   onAuthenticated: (user: AuthUser, isNewUser: boolean) => void;
@@ -41,14 +17,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ initialMode = "login", o
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (mode !== "login") return;
-    const savedCredentials = readSavedCredentials();
-    if (!savedCredentials) return;
-    setForm((current) => ({ ...current, email: savedCredentials.email, password: savedCredentials.password, rememberMe: true }));
-    setNotice("Saved login details were found. Sign in to continue.");
-  }, [mode]);
 
   const update = (field: string, value: string | boolean) => setForm((current) => ({ ...current, [field]: value }));
 
@@ -83,12 +51,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ initialMode = "login", o
         setShowPassword(false);
         setShowConfirm(false);
         return;
-      }
-
-      if (form.rememberMe) {
-        saveCredentials(form.email, form.password);
-      } else {
-        clearSavedCredentials();
       }
 
       onAuthenticated(data.user, false);

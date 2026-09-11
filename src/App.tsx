@@ -25,10 +25,6 @@ import { AllNotificationsModal } from "./components/Modals/AllNotificationsModal
 // Data
 import {
   initialStudentProfile,
-  defaultSubjects,
-  initialTasks,
-  initialUpcomingReminders,
-  initialNotifications,
   leaderboardData,
   sampleNotesList,
   samplePYQPapers,
@@ -46,7 +42,23 @@ import {
   AuthUser,
 } from "./types";
 
-function StudyDashboard({ authUser, onLogout, isNewUser, onStudySettingsSaved }: { authUser: AuthUser; onLogout: () => void; isNewUser: boolean; onStudySettingsSaved: () => void }) {
+function mapTaskRecord(record: any, year: AuthUser["year"]): StudyTask {
+  return { id: record.id, title: record.title, subject: record.subject, year, priority: record.priority, completed: record.completed, dueDate: record.date, dueTime: record.time };
+}
+
+function mapDeadlineRecord(record: any): UpcomingItem {
+  return { id: record.id, title: record.title, subject: record.subject, type: record.type, daysLeft: record.daysLeft, date: record.dueDate, urgent: record.daysLeft <= 3 };
+}
+
+function mapNotificationRecord(record: any): NotificationItem {
+  return { id: record.id, title: record.title, description: record.message, time: record.createdAt, category: record.type, read: record.isRead };
+}
+
+function mapQuizRecord(record: any): QuizAttempt {
+  return { id: record.id, subject: record.subject, score: record.correctAnswers, totalQuestions: record.totalQuestions, points: Math.round(record.score), completedAt: record.completedAt };
+}
+
+function StudyDashboard({ authUser, onLogout, isNewUser }: { authUser: AuthUser; onLogout: () => void; isNewUser: boolean }) {
   // Primary Application State
   const [profile, setProfile] = useState<StudentProfile>(initialStudentProfile);
   const [subjects, setSubjects] = useState<SubjectProgress[]>([]);
@@ -55,19 +67,21 @@ function StudyDashboard({ authUser, onLogout, isNewUser, onStudySettingsSaved }:
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   useEffect(() => {
-    if (isNewUser) {
-      setSubjects([]);
-      setTasks([]);
-      setReminders([]);
-      setNotifications([]);
-      return;
-    }
-
-    setSubjects(defaultSubjects[authUser.year] || []);
-    setTasks(initialTasks);
-    setReminders(initialUpcomingReminders);
-    setNotifications(initialNotifications);
-  }, [authUser.year, isNewUser]);
+    fetch("/api/dashboard")
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Unable to load dashboard");
+        return response.json();
+      })
+      .then((data) => {
+        setSubjects(Array.isArray(data.progress) ? data.progress : []);
+        setTasks(Array.isArray(data.allTasks) ? data.allTasks.map((task: any) => mapTaskRecord(task, authUser.year)) : []);
+        setReminders(Array.isArray(data.upcomingDeadlines) ? data.upcomingDeadlines.map(mapDeadlineRecord) : []);
+        setNotifications(Array.isArray(data.notifications) ? data.notifications.map(mapNotificationRecord) : []);
+        setQuizAttempts(Array.isArray(data.quizHistory) ? data.quizHistory.map(mapQuizRecord) : []);
+        setProfile((current) => ({ ...current, studiedHoursToday: (data.studyHistory || []).filter((session: any) => session.startedAt?.slice(0, 10) === new Date().toISOString().slice(0, 10)).reduce((total: number, session: any) => total + session.durationMinutes / 60, 0) }));
+      })
+      .catch(() => undefined);
+  }, [authUser.year]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardUser[]>(leaderboardData);
   const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>([]);
   const [notes, setNotes] = useState(sampleNotesList);
@@ -165,11 +179,6 @@ function StudyDashboard({ authUser, onLogout, isNewUser, onStudySettingsSaved }:
 
   const handleYearChange = (year: AuthUser["year"]) => {
     setProfile((current) => ({ ...current, year }));
-    if (!isNewUser) {
-      setSubjects(defaultSubjects[year] || []);
-    } else {
-      setSubjects([]);
-    }
     fetch("/api/auth/profile", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -192,9 +201,12 @@ function StudyDashboard({ authUser, onLogout, isNewUser, onStudySettingsSaved }:
 
   // Task Handlers
   const handleToggleTask = (taskId: string) => {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, completed: !t.completed } : t))
-    );
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task) return;
+    fetch(`/api/tasks/${taskId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ completed: !task.completed }) })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Unable to update task")))
+      .then((data) => setTasks((prev) => prev.map((item) => item.id === taskId ? mapTaskRecord(data.task, authUser.year) : item)))
+      .catch(() => undefined);
   };
 
   const handleAddTask = (
@@ -205,35 +217,17 @@ function StudyDashboard({ authUser, onLogout, isNewUser, onStudySettingsSaved }:
     dueDate?: string,
     dueTime?: string
   ) => {
-    const newTask: StudyTask = {
-      id: `task-${Date.now()}`,
-      title,
-      subject,
-      year,
-      priority,
-      completed: false,
-      dueDate,
-      dueTime,
-      estimatedMinutes: 45,
-    };
-
-    setTasks((prev) => [newTask, ...prev]);
-
-    setNotifications((prev) => [
-      {
-        id: `notif-task-${Date.now()}`,
-        title: `Study reminder scheduled: ${title}`,
-        description: `${subject} (${year}) is planned for ${dueDate || "your selected date"}${dueTime ? ` at ${dueTime}` : ""}.`,
-        time: "Just now",
-        category: "announcement",
-        read: false,
-      },
-      ...prev,
-    ]);
+    const date = dueDate || new Date().toISOString().slice(0, 10);
+    fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, subject, priority, date, time: dueTime }) })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Unable to create task")))
+      .then((data) => setTasks((prev) => [mapTaskRecord(data.task, authUser.year), ...prev]))
+      .catch(() => undefined);
   };
 
   const handleDeleteTask = (taskId: string) => {
-    setTasks((prev) => prev.filter((task) => task.id !== taskId));
+    fetch(`/api/tasks/${taskId}`, { method: "DELETE" })
+      .then((response) => response.ok ? setTasks((prev) => prev.filter((task) => task.id !== taskId)) : undefined)
+      .catch(() => undefined);
   };
 
   useEffect(() => {
@@ -250,6 +244,9 @@ function StudyDashboard({ authUser, onLogout, isNewUser, onStudySettingsSaved }:
 
   // Study hours updater
   const handleLogStudyTime = (addedHours: number) => {
+    const startedAt = new Date();
+    const endedAt = new Date(startedAt.getTime() + addedHours * 60 * 60 * 1000);
+    fetch("/api/study-sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ subject: "General Study", startedAt: startedAt.toISOString(), endedAt: endedAt.toISOString(), durationMinutes: Math.round(addedHours * 60) }) }).catch(() => undefined);
     setProfile((prev) => ({
       ...prev,
       studiedHoursToday: Math.min(prev.dailyGoalHours, +(prev.studiedHoursToday + addedHours).toFixed(1)),
@@ -258,11 +255,28 @@ function StudyDashboard({ authUser, onLogout, isNewUser, onStudySettingsSaved }:
 
   // Reminder adder
   const handleAddReminder = (item: Omit<UpcomingItem, "id">) => {
-    const newRem: UpcomingItem = {
-      ...item,
-      id: `rem-${Date.now()}`,
-    };
-    setReminders((prev) => [newRem, ...prev]);
+    const dueDate = /^\d{4}-\d{2}-\d{2}$/.test(item.date) ? item.date : new Date(Date.now() + item.daysLeft * 86400000).toISOString().slice(0, 10);
+    fetch("/api/deadlines", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: item.title, subject: item.subject, type: item.type, dueDate }) })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Unable to create deadline")))
+      .then((data) => setReminders((prev) => [mapDeadlineRecord(data.deadline), ...prev]))
+      .catch(() => undefined);
+  };
+
+  const handleDeleteReminder = (id: string) => {
+    fetch(`/api/deadlines/${id}`, { method: "DELETE" })
+      .then((response) => response.ok ? setReminders((prev) => prev.filter((item) => item.id !== id)) : undefined)
+      .catch(() => undefined);
+  };
+
+  const handleEditReminder = (item: UpcomingItem) => {
+    const title = window.prompt("Deadline title", item.title)?.trim();
+    if (!title) return;
+    const dueDate = window.prompt("Due date (YYYY-MM-DD)", item.date)?.trim();
+    if (!dueDate) return;
+    fetch(`/api/deadlines/${item.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, dueDate }) })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Unable to update deadline")))
+      .then((data) => setReminders((prev) => prev.map((current) => current.id === item.id ? mapDeadlineRecord(data.deadline) : current)))
+      .catch(() => undefined);
   };
 
   // Add Points to Leaderboard
@@ -279,15 +293,15 @@ function StudyDashboard({ authUser, onLogout, isNewUser, onStudySettingsSaved }:
   };
 
   const handleRecordQuizAttempt = (attempt: Omit<QuizAttempt, "id" | "completedAt">) => {
-    setQuizAttempts((prev) => [
-      ...prev,
-      { ...attempt, id: `quiz-attempt-${Date.now()}`, completedAt: new Date().toISOString() },
-    ]);
+    fetch("/api/quiz-performance", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ quizId: `quiz-${Date.now()}`, subject: attempt.subject, totalQuestions: attempt.totalQuestions, correctAnswers: attempt.score, score: attempt.totalQuestions ? (attempt.score / attempt.totalQuestions) * 100 : 0 }) })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Unable to save quiz")))
+      .then((data) => setQuizAttempts((prev) => [mapQuizRecord(data.attempt), ...prev]))
+      .catch(() => undefined);
   };
 
   // Mark all notifications read
   const handleMarkAllNotificationsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    fetch("/api/notifications/read-all", { method: "PUT" }).then(() => setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))).catch(() => undefined);
   };
 
   useEffect(() => {
@@ -440,6 +454,8 @@ function StudyDashboard({ authUser, onLogout, isNewUser, onStudySettingsSaved }:
               onOpenPYQs={() => setIsPYQOpen(true)}
               onOpenNotes={() => setIsNotesOpen(true)}
               onAddReminder={handleAddReminder}
+              onDeleteReminder={handleDeleteReminder}
+              onEditReminder={handleEditReminder}
             />
 
             {/* Quiz Leaderboard */}
@@ -549,12 +565,6 @@ function StudyDashboard({ authUser, onLogout, isNewUser, onStudySettingsSaved }:
         onSaveProfile={(updated) => {
           setProfile((prev) => {
             const next = { ...prev, ...updated };
-            if (updated.year && !isNewUser && defaultSubjects[updated.year]) {
-              setSubjects(defaultSubjects[updated.year]);
-            }
-            if (isNewUser && updated.year) {
-              setSubjects([]);
-            }
             return next;
           });
           localStorage.setItem(`studyhub_settings_${authUser.id}`, JSON.stringify({
@@ -562,9 +572,6 @@ function StudyDashboard({ authUser, onLogout, isNewUser, onStudySettingsSaved }:
             nextExamDays: updated.nextExamDays,
             dailyGoalHours: updated.dailyGoalHours,
           }));
-          if (updated.semester !== undefined || updated.nextExamDays !== undefined || updated.dailyGoalHours !== undefined) {
-            onStudySettingsSaved();
-          }
           fetch("/api/auth/profile", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
@@ -616,44 +623,12 @@ export function App() {
         const data = await response.json();
         if (data.user) {
           setAuthUser(data.user);
-          setIsNewUser(localStorage.getItem(`studyhub_new_user_${data.user.id}`) === "true");
+          const dashboardResponse = await fetch("/api/dashboard");
+          const dashboard = await dashboardResponse.json();
+          setIsNewUser(!(dashboard.allTasks?.length || dashboard.upcomingDeadlines?.length || dashboard.studyHistory?.length || dashboard.quizHistory?.length || dashboard.notifications?.length || dashboard.progress?.length));
           return;
         }
       } catch {
-        setAuthUser(null);
-      }
-
-      try {
-        const savedCredentials = localStorage.getItem("studyhub_saved_credentials");
-        if (!savedCredentials) {
-          setAuthUser(null);
-          return;
-        }
-
-        const parsed = JSON.parse(savedCredentials);
-        if (!parsed?.email || !parsed?.password) {
-          localStorage.removeItem("studyhub_saved_credentials");
-          setAuthUser(null);
-          return;
-        }
-
-        const loginResponse = await fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: parsed.email, password: parsed.password, rememberMe: true }),
-        });
-
-        const loginData = await loginResponse.json();
-        if (!loginResponse.ok) {
-          localStorage.removeItem("studyhub_saved_credentials");
-          setAuthUser(null);
-          return;
-        }
-
-        setAuthUser(loginData.user);
-        setIsNewUser(localStorage.getItem(`studyhub_new_user_${loginData.user.id}`) === "true");
-      } catch {
-        localStorage.removeItem("studyhub_saved_credentials");
         setAuthUser(null);
       }
     };
@@ -663,14 +638,18 @@ export function App() {
 
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
-    localStorage.removeItem("studyhub_saved_credentials");
     setAuthUser(null);
   };
 
   if (!authChecked) return <div className="flex min-h-screen items-center justify-center bg-slate-950 text-sm text-white">Loading StudyHub...</div>;
-  if (!authUser) return <AuthScreen onAuthenticated={(user, registered) => { setIsNewUser(registered); if (registered) localStorage.setItem(`studyhub_new_user_${user.id}`, "true"); setAuthUser(user); }} />;
+  if (!authUser) return <AuthScreen onAuthenticated={async (user) => {
+    const dashboardResponse = await fetch("/api/dashboard");
+    const dashboard = await dashboardResponse.json();
+    setIsNewUser(!(dashboard.allTasks?.length || dashboard.upcomingDeadlines?.length || dashboard.studyHistory?.length || dashboard.quizHistory?.length || dashboard.notifications?.length || dashboard.progress?.length));
+    setAuthUser(user);
+  }} />;
   if (authUser.role === "admin") return <AdminDashboard user={authUser} onLogout={logout} />;
-  return <StudyDashboard authUser={authUser} onLogout={logout} isNewUser={isNewUser} onStudySettingsSaved={() => setIsNewUser(false)} />;
+  return <StudyDashboard authUser={authUser} onLogout={logout} isNewUser={isNewUser} />;
 }
 
 export default App;

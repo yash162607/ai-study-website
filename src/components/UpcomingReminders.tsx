@@ -5,6 +5,8 @@ import {
   BookOpen,
   FileCheck,
   ArrowRight,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { UpcomingItem } from "../types";
 
@@ -13,6 +15,8 @@ interface UpcomingRemindersProps {
   onOpenPYQs: () => void;
   onOpenNotes: () => void;
   onAddReminder: (item: Omit<UpcomingItem, "id">) => void;
+  onDeleteReminder: (id: string) => void;
+  onEditReminder: (item: UpcomingItem) => void;
 }
 
 export const UpcomingReminders: React.FC<UpcomingRemindersProps> = ({
@@ -20,13 +24,15 @@ export const UpcomingReminders: React.FC<UpcomingRemindersProps> = ({
   onOpenPYQs,
   onOpenNotes,
   onAddReminder,
+  onDeleteReminder,
+  onEditReminder,
 }) => {
   const [activeType, setActiveType] = useState<"all" | "exam" | "assignment">("all");
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newSubject, setNewSubject] = useState("Sustainable Urban Development ( SUD)");
   const [newType, setNewType] = useState<"exam" | "assignment" | "project">("exam");
-  const [newDaysLeft, setNewDaysLeft] = useState<number>(10);
+  const [newDueDate, setNewDueDate] = useState(() => new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10));
 
   const subjectOptions = [
     "Sustainable Urban Development ( SUD)",
@@ -65,9 +71,9 @@ export const UpcomingReminders: React.FC<UpcomingRemindersProps> = ({
       title: newTitle.trim(),
       subject: newSubject,
       type: newType,
-      daysLeft: Number(newDaysLeft) || 1,
-      date: `In ${newDaysLeft} Days`,
-      urgent: Number(newDaysLeft) <= 3,
+      daysLeft: Math.max(0, Math.ceil((new Date(`${newDueDate}T00:00:00`).getTime() - new Date().setHours(0, 0, 0, 0)) / 86400000)),
+      date: newDueDate,
+      urgent: false,
     });
     setNewTitle("");
     setShowAddForm(false);
@@ -179,11 +185,10 @@ export const UpcomingReminders: React.FC<UpcomingRemindersProps> = ({
               <option value="project">Project</option>
             </select>
             <input
-              type="number"
-              min="1"
-              max="90"
-              value={newDaysLeft}
-              onChange={(e) => setNewDaysLeft(Number(e.target.value))}
+              type="date"
+              min={new Date().toISOString().slice(0, 10)}
+              value={newDueDate}
+              onChange={(e) => setNewDueDate(e.target.value)}
               className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px]"
               placeholder="Days left"
             />
@@ -229,18 +234,18 @@ export const UpcomingReminders: React.FC<UpcomingRemindersProps> = ({
                     {item.title}
                   </p>
                   <p className="text-[10px] text-slate-400 truncate">
-                    {item.subject} • {item.date}
+                    {item.subject} • {new Date(`${item.date}T00:00:00`).toLocaleDateString()}
                   </p>
                 </div>
               </div>
 
-              <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded-lg shrink-0 ${getDaysBadge(
-                  item.daysLeft
-                )}`}
-              >
-                {item.daysLeft} {item.daysLeft === 1 ? "day" : "days"} left
-              </span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${getDaysBadge(item.daysLeft)}`}>
+                  {item.daysLeft} {item.daysLeft === 1 ? "day" : "days"} left
+                </span>
+                <button onClick={() => onEditReminder(item)} className="p-1 text-slate-400 hover:text-blue-600" title="Edit deadline"><Pencil className="h-3 w-3" /></button>
+                <button onClick={() => onDeleteReminder(item.id)} className="p-1 text-slate-400 hover:text-rose-600" title="Delete deadline"><Trash2 className="h-3 w-3" /></button>
+              </div>
             </div>
           ))}
         </div>

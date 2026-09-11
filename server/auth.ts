@@ -1,16 +1,16 @@
 import crypto from "crypto";
+import bcrypt from "bcryptjs";
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
 export function hashPassword(password: string): string {
-  const salt = crypto.randomBytes(16).toString("hex");
-  const hash = crypto.scryptSync(password, salt, 64).toString("hex");
-  return `${salt}:${hash}`;
+  return bcrypt.hashSync(password, 12);
 }
 
 export function verifyPassword(password: string, storedHash: string): boolean {
+  if (storedHash.startsWith("$2")) return bcrypt.compareSync(password, storedHash);
   const [salt, hash] = storedHash.split(":");
   if (!salt || !hash) return false;
 

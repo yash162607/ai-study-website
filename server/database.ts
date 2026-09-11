@@ -148,7 +148,8 @@ database.exec(`
     year TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
   CREATE TABLE IF NOT EXISTS sessions (
@@ -195,7 +196,65 @@ database.exec(`
     solved INTEGER NOT NULL,
     download_url TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS study_tasks (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    date TEXT NOT NULL,
+    time TEXT,
+    priority TEXT NOT NULL CHECK (priority IN ('high', 'medium', 'low')),
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS deadlines (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    due_date TEXT NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('exam', 'assignment', 'project', 'internal')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS study_sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subject TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    ended_at TEXT NOT NULL,
+    duration_minutes INTEGER NOT NULL CHECK (duration_minutes >= 0)
+  );
+
+  CREATE TABLE IF NOT EXISTS quiz_performance (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    quiz_id TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    total_questions INTEGER NOT NULL CHECK (total_questions > 0),
+    correct_answers INTEGER NOT NULL CHECK (correct_answers >= 0),
+    score REAL NOT NULL,
+    completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    type TEXT NOT NULL,
+    is_read INTEGER NOT NULL DEFAULT 0 CHECK (is_read IN (0, 1)),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
 `);
+
+const userColumns = database.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
+if (!userColumns.some((column) => column.name === "updated_at")) {
+  database.exec("ALTER TABLE users ADD COLUMN updated_at TEXT");
+  database.exec("UPDATE users SET updated_at = created_at WHERE updated_at IS NULL");
+}
 
 export interface AuthUser {
   id: string;
@@ -207,6 +266,7 @@ export interface AuthUser {
   year: "FY" | "SY" | "TY";
   role: "user" | "admin";
   createdAt: string;
+  updatedAt?: string;
 }
 
 function mapUser(row: any): AuthUser {
@@ -220,6 +280,7 @@ function mapUser(row: any): AuthUser {
     year: row.year,
     role: row.role,
     createdAt: row.created_at,
+    updatedAt: row.updated_at ?? row.created_at,
   };
 }
 
@@ -252,7 +313,7 @@ export function createUser(input: {
 }
 
 export function getUserById(id: string): AuthUser | undefined {
-  const row = database.prepare("SELECT id, full_name, email, mobile, college, course, year, role, created_at FROM users WHERE id = ?").get(id);
+  const row = database.prepare("SELECT id, full_name, email, mobile, college, course, year, role, created_at, updated_at FROM users WHERE id = ?").get(id);
   return row ? mapUser(row) : undefined;
 }
 
@@ -267,7 +328,7 @@ export function createSession(tokenHash: string, userId: string, expiresAt: stri
 
 export function getUserBySession(tokenHash: string): AuthUser | undefined {
   const row = database.prepare(`
-    SELECT u.id, u.full_name, u.email, u.mobile, u.college, u.course, u.year, u.role, u.created_at
+    SELECT u.id, u.full_name, u.email, u.mobile, u.college, u.course, u.year, u.role, u.created_at, u.updated_at
     FROM sessions s JOIN users u ON u.id = s.user_id
     WHERE s.token_hash = ? AND s.expires_at > datetime('now')
   `).get(tokenHash);
@@ -279,7 +340,7 @@ export function deleteSession(tokenHash: string): void {
 }
 
 export function updateUserProfile(id: string, input: { fullName: string; mobile?: string; college: string; course: string; year: "FY" | "SY" | "TY" }): AuthUser | undefined {
-  database.prepare("UPDATE users SET full_name = ?, mobile = ?, college = ?, course = ?, year = ? WHERE id = ?").run(input.fullName.trim(), input.mobile?.trim() || null, input.college.trim(), input.course, input.year, id);
+  database.prepare("UPDATE users SET full_name = ?, mobile = ?, college = ?, course = ?, year = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(input.fullName.trim(), input.mobile?.trim() || null, input.college.trim(), input.course, input.year, id);
   return getUserById(id);
 }
 
@@ -452,4 +513,126 @@ export function upsertPYQ(paper: PYQPaper): void {
 
 export function deletePYQ(id: string): void {
   database.prepare("DELETE FROM pyqs WHERE id = ?").run(id);
+}
+
+export interface StudyTaskRecord {
+  id: string;
+  title: string;
+  subject: string;
+  date: string;
+  time?: string;
+  priority: "high" | "medium" | "low";
+  completed: boolean;
+  createdAt: string;
+}
+
+function mapTask(row: any): StudyTaskRecord {
+  return { id: row.id, title: row.title, subject: row.subject, date: row.date, time: row.time ?? undefined, priority: row.priority, completed: Boolean(row.completed), createdAt: row.created_at };
+}
+
+export function listTodayTasks(userId: string, today: string): StudyTaskRecord[] {
+  return (database.prepare("SELECT * FROM study_tasks WHERE user_id = ? AND date = ? ORDER BY completed, time, created_at").all(userId, today) as any[]).map(mapTask);
+}
+
+export function listTasks(userId: string): StudyTaskRecord[] {
+  return (database.prepare("SELECT * FROM study_tasks WHERE user_id = ? ORDER BY date, completed, time, created_at").all(userId) as any[]).map(mapTask);
+}
+
+export function createStudyTask(userId: string, input: Omit<StudyTaskRecord, "id" | "completed" | "createdAt">): StudyTaskRecord {
+  const id = crypto.randomUUID();
+  database.prepare("INSERT INTO study_tasks (id, user_id, title, subject, date, time, priority) VALUES (?, ?, ?, ?, ?, ?, ?)").run(id, userId, input.title, input.subject, input.date, input.time || null, input.priority);
+  return mapTask(database.prepare("SELECT * FROM study_tasks WHERE id = ? AND user_id = ?").get(id, userId));
+}
+
+export function updateStudyTask(userId: string, id: string, input: Partial<Omit<StudyTaskRecord, "id" | "completed" | "createdAt">> & { completed?: boolean }): StudyTaskRecord | undefined {
+  const current = database.prepare("SELECT * FROM study_tasks WHERE id = ? AND user_id = ?").get(id, userId) as any;
+  if (!current) return undefined;
+  const next = { ...mapTask(current), ...input };
+  database.prepare("UPDATE study_tasks SET title = ?, subject = ?, date = ?, time = ?, priority = ?, completed = ? WHERE id = ? AND user_id = ?").run(next.title, next.subject, next.date, next.time || null, next.priority, next.completed ? 1 : 0, id, userId);
+  return mapTask(database.prepare("SELECT * FROM study_tasks WHERE id = ? AND user_id = ?").get(id, userId));
+}
+
+export function deleteStudyTask(userId: string, id: string): boolean {
+  return database.prepare("DELETE FROM study_tasks WHERE id = ? AND user_id = ?").run(id, userId).changes > 0;
+}
+
+export interface DeadlineRecord {
+  id: string;
+  title: string;
+  subject: string;
+  dueDate: string;
+  type: "exam" | "assignment" | "project" | "internal";
+  daysLeft: number;
+  createdAt: string;
+}
+
+function mapDeadline(row: any): DeadlineRecord {
+  const due = new Date(`${row.due_date}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return { id: row.id, title: row.title, subject: row.subject, dueDate: row.due_date, type: row.type, daysLeft: Math.ceil((due.getTime() - today.getTime()) / 86400000), createdAt: row.created_at };
+}
+
+export function listUpcomingDeadlines(userId: string): DeadlineRecord[] {
+  return (database.prepare("SELECT * FROM deadlines WHERE user_id = ? AND due_date >= date('now') ORDER BY due_date, created_at").all(userId) as any[]).map(mapDeadline);
+}
+
+export function createDeadline(userId: string, input: { title: string; subject: string; dueDate: string; type: DeadlineRecord["type"] }): DeadlineRecord {
+  const id = crypto.randomUUID();
+  database.prepare("INSERT INTO deadlines (id, user_id, title, subject, due_date, type) VALUES (?, ?, ?, ?, ?, ?)").run(id, userId, input.title, input.subject, input.dueDate, input.type);
+  return mapDeadline(database.prepare("SELECT * FROM deadlines WHERE id = ? AND user_id = ?").get(id, userId));
+}
+
+export function updateDeadline(userId: string, id: string, input: Partial<Omit<DeadlineRecord, "id" | "daysLeft" | "createdAt">>): DeadlineRecord | undefined {
+  const current = database.prepare("SELECT * FROM deadlines WHERE id = ? AND user_id = ?").get(id, userId) as any;
+  if (!current) return undefined;
+  const next = { title: input.title ?? current.title, subject: input.subject ?? current.subject, dueDate: input.dueDate ?? current.due_date, type: input.type ?? current.type };
+  database.prepare("UPDATE deadlines SET title = ?, subject = ?, due_date = ?, type = ? WHERE id = ? AND user_id = ?").run(next.title, next.subject, next.dueDate, next.type, id, userId);
+  return mapDeadline(database.prepare("SELECT * FROM deadlines WHERE id = ? AND user_id = ?").get(id, userId));
+}
+
+export function deleteDeadline(userId: string, id: string): boolean {
+  return database.prepare("DELETE FROM deadlines WHERE id = ? AND user_id = ?").run(id, userId).changes > 0;
+}
+
+export interface StudySessionRecord { id: string; subject: string; startedAt: string; endedAt: string; durationMinutes: number; }
+export interface QuizPerformanceRecord { id: string; quizId: string; subject: string; totalQuestions: number; correctAnswers: number; score: number; completedAt: string; }
+
+export function recordStudySession(userId: string, input: Omit<StudySessionRecord, "id">): StudySessionRecord {
+  const id = crypto.randomUUID();
+  database.prepare("INSERT INTO study_sessions (id, user_id, subject, started_at, ended_at, duration_minutes) VALUES (?, ?, ?, ?, ?, ?)").run(id, userId, input.subject, input.startedAt, input.endedAt, input.durationMinutes);
+  return { id, ...input };
+}
+
+export function listStudySessions(userId: string): StudySessionRecord[] {
+  return (database.prepare("SELECT id, subject, started_at, ended_at, duration_minutes FROM study_sessions WHERE user_id = ? ORDER BY started_at DESC").all(userId) as any[]).map((row) => ({ id: row.id, subject: row.subject, startedAt: row.started_at, endedAt: row.ended_at, durationMinutes: row.duration_minutes }));
+}
+
+export function recordQuizPerformance(userId: string, input: Omit<QuizPerformanceRecord, "id" | "completedAt"> & { completedAt?: string }): QuizPerformanceRecord {
+  const id = crypto.randomUUID();
+  const completedAt = input.completedAt || new Date().toISOString();
+  database.prepare("INSERT INTO quiz_performance (id, user_id, quiz_id, subject, total_questions, correct_answers, score, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(id, userId, input.quizId, input.subject, input.totalQuestions, input.correctAnswers, input.score, completedAt);
+  return { id, ...input, completedAt };
+}
+
+export function listQuizPerformance(userId: string): QuizPerformanceRecord[] {
+  return (database.prepare("SELECT * FROM quiz_performance WHERE user_id = ? ORDER BY completed_at DESC").all(userId) as any[]).map((row) => ({ id: row.id, quizId: row.quiz_id, subject: row.subject, totalQuestions: row.total_questions, correctAnswers: row.correct_answers, score: row.score, completedAt: row.completed_at }));
+}
+
+export interface NotificationRecord { id: string; title: string; message: string; type: string; isRead: boolean; createdAt: string; }
+function mapNotification(row: any): NotificationRecord { return { id: row.id, title: row.title, message: row.message, type: row.type, isRead: Boolean(row.is_read), createdAt: row.created_at }; }
+export function listNotifications(userId: string): NotificationRecord[] { return (database.prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50").all(userId) as any[]).map(mapNotification); }
+export function unreadNotificationCount(userId: string): number { return (database.prepare("SELECT COUNT(*) AS count FROM notifications WHERE user_id = ? AND is_read = 0").get(userId) as { count: number }).count; }
+export function markNotificationRead(userId: string, id: string): boolean { return database.prepare("UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?").run(id, userId).changes > 0; }
+export function markAllNotificationsRead(userId: string): void { database.prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ?").run(userId); }
+
+export function getProgress(userId: string): Array<{ id: string; name: string; code: string; progressPercentage: number; color: string; unitsCompleted: number; totalUnits: number }> {
+  const rows = database.prepare(`
+    SELECT subject,
+      COALESCE((SELECT COUNT(*) FROM study_tasks t WHERE t.user_id = ? AND t.subject = s.subject AND t.completed = 1), 0) AS completed_tasks,
+      COALESCE((SELECT SUM(duration_minutes) FROM study_sessions ss WHERE ss.user_id = ? AND ss.subject = s.subject), 0) AS study_minutes,
+      COALESCE((SELECT AVG(score) FROM quiz_performance qp WHERE qp.user_id = ? AND qp.subject = s.subject), 0) AS quiz_score
+    FROM (SELECT subject FROM study_tasks WHERE user_id = ? UNION SELECT subject FROM study_sessions WHERE user_id = ? UNION SELECT subject FROM quiz_performance WHERE user_id = ?) s
+  `).all(userId, userId, userId, userId, userId, userId) as Array<{ subject: string; completed_tasks: number; study_minutes: number; quiz_score: number }>;
+  return rows.map((row, index) => ({ id: row.subject.toLowerCase().replace(/[^a-z0-9]+/g, "-"), name: row.subject, code: `SUB-${String(index + 1).padStart(2, "0")}`, progressPercentage: Math.min(100, Math.round(Math.min(50, row.completed_tasks * 10) + Math.min(30, row.study_minutes / 20) + Math.min(20, row.quiz_score || 0))), color: ["#2563eb", "#0d9488", "#f59e0b", "#e11d48"][index % 4], unitsCompleted: row.completed_tasks, totalUnits: Math.max(row.completed_tasks, 10) }));
 }
