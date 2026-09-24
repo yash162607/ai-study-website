@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">StudyHub logo</title>
+  <desc id="desc">A circular StudyHub logo with stacked books and a sprouting plant.</desc>
+  <rect width="512" height="512" fill="#fff"/>
+  <circle cx="256" cy="256" r="232" fill="#eaf7ff" stroke="#087ff0" stroke-width="10"/>
+  <path d="M131 171c19-44 65-51 105-59 44-9 66-40 113-17 40 19 32 58 51 83 18 25 62 33 74 72 15 47-10 91-50 108-34 15-62-1-102 7-48 9-74 18-112 1-31-14-46-42-73-58-34-20-21-60-9-83 8-16-5-35 3-54z" fill="#c9e9fc"/>
+  <g stroke-linecap="round" stroke-linejoin="round">
+    <path d="M256 196c-3-22-1-38 12-53" fill="none" stroke="#0784e8" stroke-width="8"/>
+    <path d="M257 146c-25-6-43-19-50-42 27-3 48 5 57 28" fill="#06448b" stroke="#06448b" stroke-width="3"/>
+    <path d="M267 142c9-25 25-39 52-41-5 25-18 42-49 49" fill="#06448b" stroke="#06448b" stroke-width="3"/>
+    <circle cx="255" cy="118" r="16" fill="#062c5e"/>
+    <ellipse cx="256" cy="195" rx="21" ry="7" fill="#fff"/>
+    <path d="M157 195 350 172l8 30-185 39z" fill="#06366b" stroke="#062b58" stroke-width="4"/>
+    <path d="M173 209 326 189" fill="none" stroke="#167edf" stroke-width="5"/>
+    <path d="M181 240h176l-5 50-170 24z" fill="#fff" stroke="#d8e2ec" stroke-width="4"/>
+    <path d="M249 273h82" fill="none" stroke="#082f61" stroke-width="5"/>
+    <path d="M152 278h201l9 29-195 27z" fill="#fff" stroke="#d8e2ec" stroke-width="4"/>
+    <path d="M257 315h83" fill="none" stroke="#76c9f6" stroke-width="5"/>
+    <path d="M150 307 349 281l15 35-186 38c-18 4-30-2-36-16-5-12 0-25 8-31z" fill="#087ee7" stroke="#0568c5" stroke-width="4"/>
+    <path d="M259 336h88" fill="none" stroke="#d1f0ff" stroke-width="5"/>
+  </g>
+  <text x="256" y="413" text-anchor="middle" fill="#062957" font-family="Arial, Helvetica, sans-serif" font-size="68" font-weight="800" letter-spacing="-3">Study<tspan fill="#087ee7">Hub</tspan></text>
+</svg>

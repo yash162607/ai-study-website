@@ -65,12 +65,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={() => onNavigate("home")}
               className="flex items-center gap-2.5 text-left focus:outline-none group"
             >
-              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-sm transition-transform group-hover:scale-105">
-                <span>S</span>
-              </div>
-              <span className="font-bold text-xl tracking-tight text-blue-900">
-                Study<span className="text-blue-600">Hub</span>
-              </span>
+              <img src="/studyhub-logo.svg" alt="StudyHub" className="h-12 w-[92px] object-contain object-left transition-transform group-hover:scale-105" />
             </button>
 
             {/* Academic Year Switcher Badge */}

@@ -73,7 +73,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ initialMode = "login", o
         <section className="relative hidden overflow-hidden bg-blue-700 p-10 text-white lg:flex lg:flex-col lg:justify-between">
           <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full border-[36px] border-blue-500/50" />
           <div className="relative">
-            <div className="mb-12 flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-xl font-black text-blue-700">S</div><span className="text-2xl font-bold">Study<span className="text-blue-200">Hub</span></span></div>
+            <img src="/studyhub-logo.svg" alt="StudyHub" className="mb-8 h-auto w-44 object-contain object-left" />
             <p className="mb-3 text-sm font-semibold uppercase tracking-[0.22em] text-blue-200">Your academic command center</p>
             <h1 className="max-w-sm text-4xl font-bold leading-tight">Make every study session count.</h1>
           </div>
@@ -82,7 +82,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ initialMode = "login", o
 
         <section className="flex items-center justify-center p-6 sm:p-10">
           <div className="w-full max-w-md">
-            <div className="mb-8 lg:hidden"><div className="mb-4 flex items-center gap-2"><div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-lg font-black text-white">S</div><span className="text-xl font-bold text-blue-900">Study<span className="text-blue-600">Hub</span></span></div></div>
+            <div className="mb-8 lg:hidden"><img src="/studyhub-logo.svg" alt="StudyHub" className="mb-4 h-auto w-36 object-contain object-left" /></div>
             <div className="mb-7"><p className="mb-2 text-sm font-semibold text-blue-600">{mode === "login" ? "Welcome back" : "Join StudyHub"}</p><h2 className="text-3xl font-bold tracking-tight text-slate-900">{mode === "login" ? "Sign in to continue" : "Create your account"}</h2><p className="mt-2 text-sm text-slate-500">{mode === "login" ? "Your study workspace is waiting." : "Set up your student profile in under a minute."}</p></div>
             {error && <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</div>}
             {notice && <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{notice}</div>}
