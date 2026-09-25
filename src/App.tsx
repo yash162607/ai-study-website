@@ -528,6 +528,7 @@ function StudyDashboard({ authUser, onLogout, isNewUser }: { authUser: AuthUser;
         onCompleteQuiz={handleAddLeaderboardPoints}
         onRecordQuizAttempt={handleRecordQuizAttempt}
         availableYears={[profile.year]}
+        notes={notes}
         subjectsByYear={{
           FY: [...new Set(papers.filter((paper) => paper.collegeYear === "FY").map((paper) => paper.subject))],
           SY: [...new Set(papers.filter((paper) => paper.collegeYear === "SY").map((paper) => paper.subject))],

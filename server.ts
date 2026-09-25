@@ -570,11 +570,14 @@ Start with a short "Requirement Applied" line that confirms how you addressed th
 // AI Quiz Generator Endpoint
 app.post("/api/ai/quiz", requireAuth, async (req, res) => {
   try {
-    const { topic, subject, count = 3 } = req.body;
+    const { topic, subject, notes, count = 3 } = req.body;
     const ai = getGeminiClient();
 
     if (ai) {
+      try {
       const prompt = `Create a ${count}-question multiple choice quiz for college students on the topic: "${topic || "General College Knowledge"}" in subject "${subject || "Academics"}".
+    Use the following subject notes as the primary source and do not introduce questions from another subject:
+    ${notes || "Use standard college-level material for this subject."}
 Return ONLY valid JSON matching this exact structure without markdown formatting or code blocks:
 {
   "questions": [
@@ -602,6 +605,9 @@ Return ONLY valid JSON matching this exact structure without markdown formatting
       } catch (parseErr) {
         console.error("JSON parse error:", parseErr);
       }
+      } catch (aiError) {
+        console.error("AI Quiz generation error:", aiError);
+      }
     }
 
     // Fallback quiz questions
@@ -609,7 +615,7 @@ Return ONLY valid JSON matching this exact structure without markdown formatting
       questions: [
         {
           id: 1,
-          question: `In ${subject || "College Academics"}, what is the most effective technique for long-term retention?`,
+          question: `For ${subject || "College Academics"}, which revision approach best supports the topic ${topic || "in your notes"}?`,
           options: [
             "Passive rereading multiple times",
             "Active recall and spaced repetition",
@@ -621,7 +627,7 @@ Return ONLY valid JSON matching this exact structure without markdown formatting
         },
         {
           id: 2,
-          question: `When analyzing previous year papers (PYQs), which approach yields maximum score improvement?`,
+          question: `When revising ${subject || "this subject"}, how should you use the ${topic || "subject notes"} material?`,
           options: [
             "Only reading the questions without solving",
             "Identifying high-frequency topics and solving under timed conditions",
@@ -633,7 +639,7 @@ Return ONLY valid JSON matching this exact structure without markdown formatting
         },
         {
           id: 3,
-          question: `What is the optimal study session length recommended by cognitive science (Pomodoro principle)?`,
+          question: `Which practice method is most useful for mastering ${subject || "the subject"} concepts from ${topic || "the notes"}?`,
           options: [
             "6 hours uninterrupted without breaks",
             "25–50 minutes of deep focus followed by 5–10 min recovery",

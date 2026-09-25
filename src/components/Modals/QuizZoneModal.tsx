@@ -24,7 +24,7 @@ import {
   Sigma,
   Users,
 } from "lucide-react";
-import { AcademicYear, QuizQuestion, QuizAttempt } from "../../types";
+import { AcademicYear, QuizQuestion, QuizAttempt, StudyNote } from "../../types";
 
 interface QuizZoneModalProps {
   isOpen: boolean;
@@ -35,6 +35,7 @@ interface QuizZoneModalProps {
   onRecordQuizAttempt: (attempt: Omit<QuizAttempt, "id" | "completedAt">) => void;
   availableYears: AcademicYear[];
   subjectsByYear: Record<AcademicYear, string[]>;
+  notes: StudyNote[];
 }
 
 export const QuizZoneModal: React.FC<QuizZoneModalProps> = ({
@@ -46,6 +47,7 @@ export const QuizZoneModal: React.FC<QuizZoneModalProps> = ({
   onRecordQuizAttempt,
   availableYears,
   subjectsByYear,
+  notes,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -57,6 +59,8 @@ export const QuizZoneModal: React.FC<QuizZoneModalProps> = ({
   const [selectedYear, setSelectedYear] = useState<AcademicYear>(currentYear);
   const [selectedSubject, setSelectedSubject] = useState(subjectsByYear[availableYears[0]][0]);
   const [quizStarted, setQuizStarted] = useState(false);
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
+  const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
 
   useEffect(() => {
     if (!isOpen || quizFinished || isAnswered) return;
@@ -84,6 +88,7 @@ export const QuizZoneModal: React.FC<QuizZoneModalProps> = ({
     setScore(0);
     setTimeLeft(30);
     setStreakCount(0);
+    setQuizQuestions([]);
   }, [isOpen]);
 
   useEffect(() => {
@@ -100,8 +105,58 @@ export const QuizZoneModal: React.FC<QuizZoneModalProps> = ({
 
   if (!isOpen) return null;
 
-  const yearQuestions = questions.filter((question) => question.year === selectedYear);
+  const subjectQuestions = questions.filter(
+    (question) => question.year === selectedYear && question.subject.toLowerCase() === selectedSubject.toLowerCase()
+  );
+  const yearQuestions = quizQuestions.length > 0 ? quizQuestions : subjectQuestions;
   const currentQ = yearQuestions[currentIndex] || yearQuestions[0];
+
+  const getSubjectNote = () => notes.find((note) => {
+    const noteSubject = note.subject.toLowerCase();
+    const quizSubject = selectedSubject.toLowerCase();
+    return note.year === selectedYear && (noteSubject === quizSubject || noteSubject.includes(quizSubject) || quizSubject.includes(noteSubject));
+  });
+
+  const handleStartQuiz = async () => {
+    setIsLoadingQuestions(true);
+    const subjectNote = getSubjectNote();
+    let preparedQuestions = subjectQuestions;
+
+    try {
+      const response = await fetch("/api/ai/quiz", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject: selectedSubject,
+          topic: subjectNote ? `${subjectNote.title}. Notes: ${subjectNote.summary}` : `${selectedSubject} exam revision`,
+          notes: subjectNote?.summary,
+          count: 5,
+        }),
+      });
+      const data = await response.json();
+      const generatedQuestions = Array.isArray(data.questions)
+        ? data.questions.map((question: QuizQuestion, index: number) => ({
+            ...question,
+            id: index + 1,
+            year: selectedYear,
+            subject: selectedSubject,
+          }))
+        : [];
+      if (generatedQuestions.length > 0) preparedQuestions = generatedQuestions;
+    } catch {
+      // The subject-filtered local bank remains available when AI is offline.
+    }
+
+    setQuizQuestions(preparedQuestions);
+    setCurrentIndex(0);
+    setSelectedOption(null);
+    setIsAnswered(false);
+    setScore(0);
+    setTimeLeft(30);
+    setQuizFinished(false);
+    setQuizStarted(preparedQuestions.length > 0);
+    setIsLoadingQuestions(false);
+  };
 
   const handleTimeOut = () => {
     setIsAnswered(true);
@@ -268,11 +323,11 @@ export const QuizZoneModal: React.FC<QuizZoneModalProps> = ({
 
                 <button
                 type="button"
-                  onClick={() => setQuizStarted(true)}
-                  disabled={yearQuestions.length === 0}
+                  onClick={handleStartQuiz}
+                  disabled={isLoadingQuestions}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-xs font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Start {selectedYear} {selectedSubject} Quiz
+                {isLoadingQuestions ? "Preparing subject quiz..." : `Start ${selectedYear} ${selectedSubject} Quiz`}
                 <ArrowRight className="h-4 w-4" />
               </button>
             </div>
